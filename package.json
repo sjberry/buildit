@@ -1,6 +1,6 @@
 {
   "name": "buildit",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "(PRE-RELEASE -- Unstable) A package to help test, benchmark, and concatenate project source files into a distributable release.",
   "main": "bin/buildit.js",
   "author": "Steven Berry <steven@sberry.me> (http://www.sberry.me/)",
