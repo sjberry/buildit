@@ -2,7 +2,7 @@
 
 Buildit is a(nother) set of JavaScript project build and test utilities for NodeJS.
 
-I developed Buildit to get accquanted with NodeJS development and to aid in the development of a few private projects I maintain and use. I'm certainly not trying to supercede any existing libraries, but my feature set gradually became more coherent and objectively useful. So I pushed the source to this repository and started publishing the library to the Node Packaged Modules registry (NPM).
+I developed Buildit to get acquainted with NodeJS development and to aid in the development of a few private projects I maintain and use. I'm certainly not trying to supersede any existing libraries, but my feature set gradually became more coherent and objectively useful. So I pushed the source to this repository and started publishing the library to the Node Packaged Modules registry (NPM).
 
 ##Overview
 
@@ -36,14 +36,14 @@ Buildit it should work fine for simple tasks by itself. But there are a number o
 
 ##BUILD
 
-The ```build(template, output)``` function is used for file concatenation and accepts two arguments. ```template``` specifies the template that will be iterated over and used as a skeleton (of sorts) for importing. ```output``` is optional and specifies the output file. By default the output file will be ```./build/output.js```. You can't change the output directly, only the name of the file. Example usage:
+The ```build(template, output)``` function is used for file concatenation and accepts two arguments. ```template``` specifies the template that will be iterated over and used as a skeleton (of sorts) for importing. ```output``` is optional and specifies the output file. By default the output file will be ```./build/output.js```. The ```./build``` directory will be created automatically if it doesn't already exist. You can't change the output directory, only the name of the file. Example usage:
 
 ```javascript
 var buildit = require('buildit');
-buildit.build('core.js', 'library.js');
+buildit.build('template.js', 'library.js');
 ```
 
-The ```build``` function uses a specific template format that's subject to change if I find a better alternative. Right now a template (e.g. ```core.js```) may look something like:
+The ```build``` function uses a specific template format that's subject to change if I find a better alternative. Right now a template (e.g. ```template.js```) may look something like:
 
 ```javascript
 (function(window, undefined) {
@@ -64,7 +64,7 @@ Depending on your library structure, it may be necessary to increase the priorit
 
 Even though the first included file would be found in both imports, it will not be re-included with the second import. Also note that the indentation of the ```@import``` statement will match the block-level indentation of all the files matched to that import rule.
 
-I'll eventually support a more RegExp oriented file matching pattern to make exluding files easier.
+I'll eventually support a more RegExp oriented file matching pattern to make excluding files easier.
 
 ##LOAD
 
@@ -83,8 +83,8 @@ You can easily check what variables are currently loaded using:
 buildit.load.vars
 ```
 
-This variable is a plain JavaScript object that uses the variable names as keys and defining source file as values.
+This variable is a plain JavaScript object that uses the variable names as keys and the defining source file as values.
 
 Buildit currently supports automatic file reloading, but it relies on an unstable feature of NodeJS. So I make no guarantees about this actually working in your environment. I can only currently test on Windows and it works all right there.
 
-Essentially if a file is loaded with ```load``` a lister is created using ```fs.watch``` to monitor for file-system change events. If the listener callback fires, then the modified file is automatically reimported. A console info message will indicate these updates. Console warnings for overwritting variable names will also show up for automatically re-imported files as well.
+Essentially if a file is loaded with ```load``` a listener is created using ```fs.watch``` to monitor for file-system change events. If the listener callback fires, then the modified file is automatically reimported. A console info message will indicate these updates. Console warnings for overwriting variable names will show up for automatically re-imported files as well.
