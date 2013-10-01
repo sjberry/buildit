@@ -1,12 +1,16 @@
 {
 	"name": "buildit",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"description": "A package to help test, benchmark, and concatenate project source files into a distributable release.",
-	"main": "bin/buildit.js",
 	"author": "Steven Berry <steven@sberry.me> (http://www.sberry.me/)",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
 		"url" : "https://github.com/sjberry/npm-buildit.git"
-	}
+	},
+	"main": "bin/buildit.js",
+	"bin": "bin/cmd.js",
+	"dependencies": {
+		"optimist": "~0.3.7"
+    }
 }
