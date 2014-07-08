@@ -18,7 +18,6 @@ var argParser = optionator({
 			option: 'template',
 			alias: 't',
 			type: 'String',
-			required: true,
 			description: 'The path to the template file'
 		}
 	]
@@ -32,6 +31,10 @@ function main(argv) {
 
 	if (args.help) {
 		return argParser.generateHelp();
+	}
+
+	if (!args.template) {
+		throw new Error('Error: Option --template is required.')
 	}
 
 	build(args.template);
