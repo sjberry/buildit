@@ -1,36 +1,80 @@
 #!/usr/bin/env node
-var optimist = require('optimist');
-var sys = require("util");
-var build = require('../lib/build.js');
+var path = require('path');
+var util = require('util');
 
-var argv = optimist
-	.usage('$0 [input1.js] [options]\n')
-	.describe('t', 'Template file required only if input file isn\'t otherwise specified.')
-	.describe('o', 'Output file (default `./build/output.js`).')
-	.describe('v', 'Print version number and exit.')
-	.alias('t', 'template')
-	.alias('o', 'output')
-	.alias('v', 'version')
-	.wrap(80)
-	.argv;
+var optionator = require('optionator');
 
-if (argv.version || argv.v) {
-	var json = require('../package.json');
-	sys.puts(json.name + ' ' + json.version);
-	process.exit(0);
+
+var argParser = optionator({
+	prepend: 'Usage: buildit [command] [options]',
+	options: [
+		{
+			option: 'help',
+			alias: 'h',
+			type: 'Boolean',
+			description: 'Displays help'
+		},
+		{
+			option: 'version',
+			alias: 'v',
+			type: 'Boolean',
+			description: 'Displays version'
+		}
+	]
+});
+
+
+function main(argv) {
+	var args, cmd, command, filename, manifest, resolved, result;
+
+	argv = argv.slice();
+
+	if (argv[2] && argv[2].charAt(0) !== '-') {
+		cmd = argv.splice(2, 1)[0];
+	}
+
+	if (!cmd) {
+		args = argParser.parse(argv);
+
+		if (args.help) {
+			util.puts(argParser.generateHelp());
+			process.exit(0);
+		}
+
+		if (args.version) {
+			manifest = require('../package.json');
+			util.puts(manifest.name + ' ' + manifest.version);
+			process.exit(0);
+		}
+	}
+
+	filename = path.join(__dirname, 'commands', cmd) + '.js';
+	resolved = path.resolve(filename);
+	command = require(resolved);
+	result = command.main(process.argv);
+
+	if (typeof result === 'string') {
+		util.puts(result);
+	}
+
+	if (command.persist !== true) {
+		process.exit(0);
+	}
 }
 
-if (argv.help || argv.h) {
-	sys.puts('\n' + optimist.help());
-	process.exit(0);
+
+if (require.main === module) {
+	var args;
+
+	if (process.argv.length < 3) {
+		util.puts(argParser.generateHelp());
+		process.exit(0);
+	}
+
+	try {
+		main.call(this, process.argv);
+	}
+	catch(e) {
+		util.puts(e);
+	}
 }
-
-var template = argv._[0] || argv.template || argv.t;
-var output = argv.output || argv.o || 'output.js';
-
-if (!template) {
-	sys.puts('\nNo input template specified.');
-	process.exit(0);
-}
-
-build(template, output);
