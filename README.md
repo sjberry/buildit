@@ -158,7 +158,6 @@ For any given suite, the number of passed assert statements can be found with ``
 There are a few tasks that can be run directly from the command line. Currently the following commands are supported:
 
 * **build** &ndash; A shortcut for the buildit `build` functionality.
-* **server** &ndash; A rudimentary local development server written with Express for serving static files and simple routes.
 
 ### build ###
 The build functionality can be run from the command line through node with:
