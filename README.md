@@ -164,22 +164,3 @@ There are a few tasks that can be run directly from the command line. Currently 
 The build functionality can be run from the command line through node with:
 
 ```buildit build [options]```
-
-### server ###
-Buildit comes with a small local development and testing server built on the `express` npm library. This development server is mainly used for fat-fingering console tests and tracing through code using the browsers' excellent breakpoint systems.
-
-The Express test server uses some default configurations internally, but can be externally configured with NodeJS compliant JS modules or JSON files. There are example configurations of each of the acceptable forms in the `tests/server` directory. The configurable settings are:
-* **port** &ndash; The port that the local server will listen on.
-  **Default:** 3000
-* **staticRoot** &ndash; The root directory for static files.
-  **Default:** The directory containing `server.js`
-* **scripts** &ndash; A list of static scripts to serve on the index page (`/`) of the running server. These files should be relative to `staticRoot` and should be formatted with forward slashes for directory shifts according to the HTML standard since the strings are reproduced verbatim in the served HTML template on the index page.
-  **Default:** Empty array (`[]`)
-* **styles** &ndash; A list of static styles to serve on the index page (`/`) of the running server. These files should be relative to `staticRoot` and should be formatted with forward slashes for directory shifts according to the HTML standard since the strings are reproduced verbatim in the served HTML template on the index page.
-  **Default:** Empty array (`[]`)
-
-The test server can be run from the command line through node with:
-
-```buildit server [options]```
-
-The server will then listen on the specified or default port and log connections to stdout. The server can be closed by using the standard <kbd>CTRL</kbd>+<kbd>C</kbd> escape sequence.
