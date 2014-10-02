@@ -6,7 +6,7 @@ var build = require('../../lib/build');
 
 
 var argParser = optionator({
-	prepend: 'Usage: buildit server [options]',
+	prepend: 'Usage: buildit build [options]',
 	options: [
 		{
 			option: 'help',

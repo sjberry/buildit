@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+var util = require('util');
+
 var cmdroute = require('cmdroute')(require('../package.json'), __dirname);
 
 
