@@ -24,6 +24,12 @@ var argParser = optionator({
 });
 
 
+/**
+ * Builds a buildit template file and renders the result to stdout.
+ *
+ * @param {Array} argv An array of command line arguments.
+ * @returns {*} Returns the help string if the help option flag is specified, otherwise nothing.
+ */
 function main(argv) {
 	var args;
 
