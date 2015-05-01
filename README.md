@@ -1,165 +1,187 @@
-# buildit #
-Buildit is a(nother) set of JavaScript project build and test utilities for NodeJS.
-
-I developed Buildit to get acquainted with NodeJS development and to aid in the development of a few private projects I maintain and use. I'm certainly not trying to supersede any existing libraries, but my feature set gradually became more coherent and objectively useful. So I pushed the source to this repository and started publishing the library to the Node Packaged Modules registry (NPM).
+# buildit
+Converts CommonJS (e.g. node) style code to AMD-compliant (e.g. requirejs) bundles.
 
 
-## Overview ##
-Buildit currently supports:
+## Usage
+Programmatic usage of **buildit** is straightforward.
+The `buildit` function accepts a string pattern (or array of string patterns) and configuration options.
+The pattern format conforms to the standard seen in [GruntJS](http://gruntjs.com/) and is supported by the [glob](https://www.npmjs.org/package/glob) dependency.
 
-* Building source files into a single distributable library file according to a template.
-* Importing source files into the NodeJS global scope for use in test cases and benchmarking.
-* Creating benchmarking suites and acquiring metrics on baseline code performance.
-* Creating/running test suites.
-
-Features lined up in the next few versions:
-
-* Improve support for creating, running, and analyzing test suites. I'd like to output statistics to JSON so that they can be plotted or published.
-* Improve code benchmarking support (it's a bit simple right now). Again, outputting to JSON would be nice.
-* Name benchmark/test suites.
-* Integrate with Grunt.
-* Support command line buildit.build (the other features don't make sense in this context though).
-
-
-## Installation ##
-Buildit can be easily installed using NPM.
-
-```npm install buildit```
-
-Once installed, you can include the library using:
-
-```javascript
+```
 var buildit = require('buildit');
-```
 
-Command-line integration is also supported. The specific commands are detailed in a subsequent section.
-
-```npm install -g buildit```
-
-**Note:** Using sudo will likely be necessary if on a *nix system.
-
-Buildit is currently semi-stable and subject to a number of revisions over the coming weeks. Feel free to download and use it as is, but I can't recommend it for a production environment yet.
-
-Buildit it should work fine for simple tasks by itself. But there are a number of quality of life improvements I need to implement to get it out of its alpha state.
-
-## Components ##
-Buildit comes with a few different components that let you perform a variety of tasks.
-
-### BUILD ###
-The ```build(template)``` function is used for file concatenation and accepts one argument. ```template``` specifies the template that will be iterated over and used as a skeleton (of sorts) for importing. Imported files are concatenated and rendered to stdout. Example usage:
-
-```javascript
-var buildit = require('buildit');
-buildit.build('template.js');
-```
-
-The ```build``` function uses a specific template format that's subject to change if I find a better alternative. Right now a template (e.g. ```template.js```) may look something like:
-
-```javascript
-(function(window, undefined) {
-  @import "src/util"
-})(this);
-```
-
-If this template is built, all files at and below  ```./src/util``` will be included in the order they are encountered in a simple file walk.
-
-Depending on your library structure, it may be necessary to increase the priority of particular files or directories (e.g. for dependency reasons). This can be easily achieved with something like:
-
-```javascript
-(function(window, undefined) {
-  @import "src/util/ex/test.js"
-  @import "src/util"
-})(this);
-```
-
-Even though the first included file would be found in both imports, it will not be re-included with the second import. Also note that the indentation of the ```@import``` statement will match the block-level indentation of all the files matched to that import rule.
-
-I'll eventually support a more RegExp oriented file matching pattern to make excluding files easier.
-
-
-### LOAD (UNSTABLE) ###
-The ```load(path, refresh)``` function is used for importing files into the ```global``` context and accepts two arguments. ```path``` is the path that will be used as a starting point for a simple file walk. All files at this directory level and below will be imported. ```refresh``` is a boolean flag indicating whether or not the files should forcibly be reloaded. Example usage:
-
-```javascript
-var buildit = require('buildit');
-buildit.load('src');
-```
-
-You will encounter console warnings if you've included files with overlapping variable names. The most recently loaded file will be the active source definition for a conflicted variable.
-
-You can easily check what variables are currently loaded using:
-
-```javascript
-buildit.load.vars
-```
-
-This variable is a plain JavaScript object that uses the variable names as keys and the defining source file as values.
-
-Buildit currently supports automatic file reloading, but it relies on an unstable feature of NodeJS. So I make no guarantees about this actually working in your environment. I can only currently test on Windows and it works all right there.
-
-Essentially if a file is loaded with ```load``` a listener is created using ```fs.watch``` to monitor for file-system change events. If the listener callback fires, then the modified file is automatically reimported. A console info message will indicate these updates. Console warnings for overwriting variable names will show up for automatically re-imported files as well.
-
-
-### BENCHMARK ###
-Buildit supports basic benchmarking of callback functions. Right now, ```buildit.benchmark``` can be used to create benchmark suites with named test cases or to time one-off callbacks.
-
-For single assert statements use ```buildit.benchmark(fn, n)```, where ```fn``` is the test callback function and ```n``` is (optionally) the number of times the test should be repeated. Repeating a benchmark helps get more accurate results for extraordinarily fast (sub 1ms) callbacks. Though if you're testing for bottlenecks, this is of limited use. Example usage:
-
-```javascript
-var buildit = require('buildit');
-buildit.benchmark(function() {
-    return x = 6;
-}, 10000);
-```
-
-To create a benchmark-suite, create a new instance of the ```buildit.benchmark``` function with optional initial tests.
-
-```javascript
-var buildit = require('buildit');
-var suite = new buildit.benchmark({
-    'named_benchmark': function() {
-        return x = 6;
-    }
+var out = buildit('src/**/*.js', {
+  baseUrl: '.',
+  name: 'mybundle',
+  exports: {
+    mymod1: 'src/mymod1',
+    mymod2: 'src/mymod2'
+  }
 });
-suite.exec('named_benchmark', 10000);
+
+console.log(out);
 ```
 
-To add benchmarks to a suite after it has been initialized you can use:
+By default, the `buildit` function will automatically run with the supplied arguments.
+However, running can be delayed and patterns can be built up manually as follows:
 
-```javascript
-suite.add({
-    'named_benchmark': function() {
-        return x = 6;
-    }
+```
+var Buildit = require('buildit').Buildit;
+
+var buildit = new Buildit({
+  baseUrl: '.',
+  name: 'mybundle',
+  exports: {
+    mymod1: 'src/mymod1',
+    mymod2: 'src/mymod2'
+  }
+});
+
+var out = buildit.run();
+
+console.log(out);
+```
+
+The `Buildit` constructor accepts the same arguments as the `buildit` function (but just exposes the additional `.add()` and `.run()` methods).
+
+### Options
+**baseUrl** &ndash; The folder to use as the current working directory.
+The specified path is relative to the directory initiating the NodeJS script. Defaults to `.`.
+
+**name** &ndash; An optional name for the code bundle. This follows the AMD standard and manifests as:
+
+```
+define(name, [ ... ], function( ... ) {
+  ...
 });
 ```
 
-### TEST ###
-Buildit supports rudimentary test suites. I'm looking into providing a layer of functionality over the built-in ```require('assert')``` to justify keeping this feature included. Right now, ```buildit.test``` can be used to create test suites that automatically track the number of pass/fail test cases or to run one-off assert statements.
+If no name is supplied the bundle definition will instead be:
 
-For single assert statements use ```buildit.test(cond, message)```, where ```cond``` is the test condition and ```message``` is the message logged to the console if the test case fails. Example usage:
-
-```javascript
-var buildit = require('buildit');
-buildit.test(0 == 1, 'The unachievable has not been achieved.');
+```
+define([ ... ], function( ... ) {
+  ...
+});
 ```
 
-To create a test-suite, create a new instance of the ```buildit.test``` function.
+**define** &ndash; Internal modules can be defined in the AMD scope.
+The `define` option is a plain object with key/value pairs corresponding to the name that should be used for exportation and the path to the dependency.
+Similar to the RequireJS optimizer, the ".js" extension should be excluded from the module path as it is added automatically.
+Only definitions corresponding to files found by the supplied pattern(s) will be successfully defined.
+Defined modules can be found after requiring the bundle itself with an AMD loader.
+From the primary usage example above:
 
-```javascript
-var buildit = require('buildit');
-var suite = new buildit.test();
-suite.assert(0 == 1, 'The unachievable has not been achieved.');
+```
+require(['mybundle'], function(mybundle) {
+  // Individual modules in `mybundle` are now available.
+
+  require(['mymod1', 'mymod2'], function(mymod1, mymod2) {
+    // This should work!
+  });
+});
 ```
 
-For any given suite, the number of passed assert statements can be found with ```suite.pass``` and the number of failed statements can be found with ```suite.fail```.
+OR
 
-## Command-line Integration ##
-There are a few tasks that can be run directly from the command line. Currently the following commands are supported:
+```
+require(['mybundle'], function(mybundle) {
+  // Individual modules in `mybundle` are now available.
+});
 
-* **build** &ndash; A shortcut for the buildit `build` functionality.
+require(['mymod1', 'mymod2'], function(mymod1, mymod2) {
+  // This should work!
+});
+```
 
-### build ###
-The build functionality can be run from the command line through node with:
+**exports** &ndash; Internal modules can be directly exported in the defined bundle.
+The `exports` option is a plain object with key/value pairs corresponding to the name that should be used for exportation and the path to the dependency.
+Similar to the RequireJS optimizer, the ".js" extension should be excluded from the module path as it is added automatically.
+Only exports corresponding to files found by the supplied pattern(s) will be sucessfully exported.
+Exported modules can be accessed after requiring the bundle itself with an AMD loader.
+From the primary usage example above, the `exports` option would manifest in the bundle as:
 
-```buildit build [options]```
+```
+define(name, [ ... ], function( ... ) {
+  // Internal bundling code
+
+  return {
+    mod1: require('src/mymod1'),
+    mod2: require('src/mymod2')
+  };
+});
+```
+
+Individual modules can then be accessed as follows:
+
+```
+require(['mybundle'], function(mybundle) {
+  mybundle.mod1; // Should be defined.
+  mybundle.mod2; // Should be defined.
+});
+```
+
+
+### Command-line Support
+**buildit** cannot currently be run from the command line.
+Command-line execution will be added in future versions.
+
+
+## Limitations
+**buildit** is NOT a 1:1 replacement for [browserify](http://browserify.org/) or [webpack](http://webpack.github.io/).
+NodeJS dependencies are not traced completely. That is to say, only local dependencies (e.g. `./src/test.js`) will be included in compiled bundles.
+
+It is assumed that external dependencies (e.g. jQuery or lodash) would be AMD required through CDN or compiled with something like the [RequireJS optimizer](https://github.com/jrburke/r.js/).
+
+**buildit** does not patch or wrap Node-only libraries (e.g. NodeJS builtins) to make them usable in the browser, nor does it include them in the build. For example, code like:
+
+```
+var jquery = require('jquery');
+var fs = require('fs');
+
+module.exports = {};
+```
+
+Would translate to a bundle like:
+
+```
+define(['fs', 'jquery'], function(fs, jquery) {
+  // Internal bundling code
+});
+```
+
+There are no warning messages issued for code depending on NodeJS builtins.
+
+To reiterate, **buildit** is only intended to package locally defined-CommonJS modules into AMD compliant blocks that can THEN be used in an AMD build-optimization process or be deployed directly in a script tag (provided all dependencies are otherwise met).
+
+
+## Testing
+**buildit** has admittedly poor test coverage.
+Everything seems to work when I use this library for my own projects, but please feel free to report any issues you come across.
+I'm working to improve test coverage in future versions.
+
+
+## Notes
+### Circular Module Dependencies
+Circular dependencies are not currently supported.
+I am aware that NodeJS currently supports [module cycles](http://nodejs.org/api/modules.html#modules_cycles).
+I haven't found a good reason to support circular module definition in my own projects.
+If this changes, or if circular dependency support becomes a requested feature, **buildit** may support circular dependencies in the future.
+
+### Path Obfuscation
+Internal path definitions make use of relative pathing from the specified `baseUrl` to the included modules.
+This is to protect the privacy of your filesystem as much as possible and to improve minification potential.
+
+### Dependency Idiosyncrasies
+**buildit** depends on [**detective**](https://www.npmjs.org/package/detective) to trace module dependencies.
+As such any weaknesses in **detective** manifest in **buildit**, so please report dependency discovery issues accordingly.
+Specific deficiencies I've noticed are:
+  * Non-literal require statements
+```
+var test = 'test';
+var mymodule = require(__dirname + '/lib/' + test);
+```
+  * Offsetting require
+```
+var t = require;
+var mymodule = t('mymodule');
+```
