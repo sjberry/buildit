@@ -1,6 +1,6 @@
 {
   "name": "buildit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Converts CommonJS style code to AMD-compliant bundles.",
   "keywords": [
     "amd",
