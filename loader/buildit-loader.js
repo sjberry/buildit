@@ -8,22 +8,6 @@
  * steven@sberry.me
  */
 
-/*
-{
-	jquery: {
-		path: 'https://code.jquery.com/jquery-latest.min',
-		styles: [
-
-		]
-	}
-}
-
-{
-	'https://code.jquery.com/jquery-latest.min': 'jquery'
-}
-
-*/
-
 
 (function(root, factory) {
 	var module;
@@ -36,31 +20,32 @@
 	// This library won't work without a valid promises library. Make sure there's one defined. Some newer browsers have
 	// a Promise object defined by default which should be sufficient.
 	if (!this.Promise) {
-		throw new Error('No Promises/A+ library loaded.');
+		throw new Error('No Promises/A+ or Promises/A library loaded.');
 	}
 
 	var window = this;
 	var document = window.document;
 	var head = document.getElementsByTagName('head')[0];
 
-	// A cache of the defined modules.
-	var modules = {};
-	// A dictionary of name overrides for module definitions.
-	var aliases = {};
-	// A dictionary of external dependencies.
-	var externals = {};
+	var configuration = {};
+	var moduleConfig = configuration.modules = {};
+	var moduleConfigByPath = {};
+
+	// A dictionary containing forced name overrides for externally required modules.
+	var nameOverrides = {};
+	// A local cache of modules after they have been defined.
+	var resolved = {};
 	// A dictionary of Deferred instances corresponding to the required modules.
 	var waiting = {};
-	// Queue to handle the
-	var definitions = [];
+	// Queue to handle asynchronous calls to `define`.
+	var defineStack = [];
 
-
-	//var re_external = /^(?:[a-z]+):\/\//i;
-	//var re_capture_name = /([^\/]+)$/;
+	var re_capture_name = /([^\/]+)$/;
+	var re_strip_extension = /\.js$/i;
 
 	var listeners = {
 		onerror: function onerror() {
-			// FIXME: Do we need to manually remove the event listeners here too?
+			// TODO: Do we need to manually remove the event listeners here too?
 			this.parentNode.removeChild(this);
 		},
 
@@ -68,7 +53,9 @@
 			this.removeEventListener('load', listeners.onload);
 			this.removeEventListener('error', listeners.onerror);
 
-			_finishDefinition(this);
+			console.log(this);
+
+			//_finishDefinition(this);
 		}
 	};
 
@@ -80,46 +67,48 @@
 	 * @private
 	 */
 	function _finishDefinition(node) {
-		var definition, dependencies, factory, name, promises;
+		var config, definition, dependencies, factory, name, path, promises;
 
-		definition = definitions.pop();
+		definition = defineStack.pop();
 
-		// In some cases we'll be attempting to finish a definition that hasn't been declared yet.
-		// For example if a require call comes before a define call:
-		//
-		//     require(['test-module'], function() { ... });
-		//     define('test-module')
-		//
-		// If this is the case, `definition` here will be `undefined` and will need to be caught.
-		//
-		// FIXME: Does this have any unintended side-effects in the code?
-		if (definition) {
-			name = definition.name;
-			dependencies = definition.dependencies;
-			factory = definition.factory;
+		name = definition.name;
+		dependencies = definition.dependencies;
+		factory = definition.factory;
 
-			if (node && aliases.hasOwnProperty(node.src)) {
-				name = aliases[node.src];
+		if (node) {
+			path = node.src;
+			config = moduleConfigByPath[path];
+
+			if (config && config.rename === true) {
+				// We can be sure this `name` property exists because we set it programatically in the .config() function.
+				name = config.name;
 			}
-
-			promises = _getPromises(dependencies);
-
-			if (!waiting.hasOwnProperty(name)) {
-				waiting[name] = new Deferred();
+			else if (name == null) {
+				name = re_capture_name.exec(path)[1].replace(re_strip_extension, '');
 			}
-
-			Promise.all(promises).then(function() {
-				var resolved;
-
-				waiting[name].resolve();
-
-				resolved = dependencies.map(function(name) {
-					return modules[name];
-				});
-
-				modules[name] = factory.apply(window, resolved);
-			});
 		}
+
+		if (name == null) {
+			throw new Error('Unnamed local modules not supported. Optimize this module to automatically add a name.');
+		}
+
+		promises = _getPromises(dependencies);
+
+		if (!waiting.hasOwnProperty(name)) {
+			waiting[name] = new Deferred();
+		}
+
+		Promise.all(promises).then(function() {
+			var modules;
+
+			waiting[name].resolve();
+
+			modules = dependencies.map(function(name) {
+				return resolved[name];
+			});
+
+			resolved[name] = factory.apply(window, modules);
+		});
 	}
 
 
@@ -157,6 +146,12 @@
 		var node;
 
 		if (type === 'text/javascript') {
+			url += '.js';
+
+			if (node = document.querySelector('script[src="' + url + '"]')) {
+				return node;
+			}
+
 			node = document.createElement('script');
 			node.type = type;
 			node.charset = 'utf-8';
@@ -165,26 +160,34 @@
 			node.addEventListener('load', listeners.onload);
 			node.addEventListener('error', listeners.onerror);
 
-			node.src = url + '.js';
+			node.src = url;
 		}
 		else if (type === 'text/css') {
+			url += '.css';
+
+			if (node = document.querySelector('link[rel="stylesheet"][href="' + url + '"]')) {
+				return node;
+			}
+
 			node = document.createElement('link');
 			node.type = type;
 			node.rel = 'stylesheet';
 			node.charset = 'utf-8';
-			node.media = 'placeholder';
+			//node.media = 'none';
 
 			// TODO: Should we add listeners to stylesheet loading too?
 			// Technically they're supplemental requirements since CSS shouldn't be functionally linked to JS.
 			// May not be consistent in all cases.
 
-			node.href = url + '.css';
+			node.href = url;
 		}
 		else {
 			throw new Error('Invalid content type.');
 		}
 
 		head.appendChild(node);
+
+		return node;
 	}
 
 
@@ -194,25 +197,30 @@
 	 * @private
 	 */
 	function _loadDependencies(dependencies) {
-		var i, j, dependency, name;
+		var i, config, name, path;
 
 		for (i = 0; i < dependencies.length; i++) {
 			name = dependencies[i];
+			config = moduleConfig[name];
 
-			if (externals.hasOwnProperty(name)) {
-				dependency = externals[name];
-
-				if (dependency.path) {
-					_load(dependency.path, 'text/javascript');
-				}
-
-				if (dependency.styles) {
-					for (j = 0; j < dependency.styles.length; j++) {
-						_load(dependency.styles[j], 'text/css');
-					}
-				}
+			if (config && (path = config.path)) {
+				_load(path, 'text/javascript');
 			}
 		}
+	}
+
+
+	/**
+	 *
+	 *
+	 * @private
+	 */
+	function _redraw() {
+		var node;
+
+		node = document.createElement('script');
+		head.appendChild(node);
+		head.removeChild(node);
 	}
 
 
@@ -238,26 +246,24 @@
 	 * @param {Function} factory
 	 */
 	function define(name, dependencies, factory) {
+		console.log('here');
+
 		if (typeof name != 'string' && factory == null) {
 			factory = dependencies;
 			dependencies = name;
 			name = void(0);
 		}
 
-		// TODO: Support unnamed definitions?
-
-		definitions.push({
+		defineStack.push({
 			name: name,
 			dependencies: dependencies,
 			factory: factory
 		});
 
-		if (!externals.hasOwnProperty(name)) {
-			_finishDefinition();
-		}
+		// FIXME: How do we prevent this function from running immediately on an async loaded module?
+		// This issue blocks force renaming modules and dynamically naming modules based on file names (without preoptimization).
+		//_finishDefinition();
 
-		// FIXME: Stylesheets should only load on require, not on define. Maybe pass a flag to _loadDependencies?
-		// FIXME: When using aliases, the keys used for `waiting` do not use the proper aliases. This causes some out of order loading and/or indefinite resolution.
 		_loadDependencies(dependencies);
 	}
 
@@ -269,7 +275,7 @@
 	 * @returns {require}
 	 */
 	function config(options) {
-		var name, path, styles, value;
+		var name, path, rename, styles, value;
 
 		for (name in options) {
 			if (!options.hasOwnProperty(name)) {
@@ -278,18 +284,24 @@
 
 			value = options[name];
 
+			// If the value corresponding to the `name` key is a string, then it's a "simple" configuration entry and
+			// is just the value of the path.
 			if (typeof value === 'string') {
 				path = value;
 				styles = []
 			}
 			else {
+				// If the path is null, then the specified module is understood to be "internal." An internal module is
+				// one that is loaded via a markup script tag rather than one "required" in dynamically via the loader.
 				path = value.path || null;
 				styles = (value.styles) ? value.styles.slice() : [];
+				rename = value.rename || false;
 			}
 
-			aliases[path + '.js'] = name;
-			externals[name] = {
+			moduleConfig[name] = moduleConfigByPath[path + '.js'] = {
+				name: name,
 				path: path,
+				rename: rename,
 				styles: styles
 			};
 		}
@@ -316,19 +328,31 @@
 		}
 
 		if (typeof callback !== 'function') {
-			throw new Error('Invalid callback supplied');
+			throw new Error('Invalid callback supplied.');
 		}
 
 		promises = _getPromises(dependencies);
 
 		Promise.all(promises).then(function() {
-			var resolved;
+			var modules;
 
-			resolved = dependencies.map(function(name) {
-				return modules[name];
+			modules = dependencies.map(function(name) {
+				var i, config, styles;
+
+				config = moduleConfig[name];
+
+				if (config && (styles = config.styles)) {
+					for (i = 0; i < styles.length; i++) {
+						// FIXME: This is sensitive to redraw computation. It may not be an issue if dependencies are loaded onReady rather than in response to user events later.
+						// Potential solution to use deferred queue with a .then() callback to set media type to "all" from "none" (i.e. force a "single" redraw).
+						_load(styles[i], 'text/css');
+					}
+				}
+
+				return resolved[name];
 			});
 
-			callback.apply(window, resolved);
+			callback.apply(window, modules);
 		});
 
 		_loadDependencies(dependencies);
@@ -338,11 +362,13 @@
 	define.amd = true;
 	require.config = config;
 	require.debug = {
-		aliases: aliases,
-		definitions: definitions,
-		externals: externals,
-		modules: modules,
-		waiting: waiting
+		configuration: configuration,
+		defineStack: defineStack,
+		resolved: resolved,
+		waiting: waiting,
+
+		load: _load,
+		redraw: _redraw
 	};
 
 

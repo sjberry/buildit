@@ -1,9 +1,10 @@
 require.config({
-	jquery: {
+	'jquery-2.1.4': {
 		path: 'http://code.jquery.com/jquery-2.1.4.min',
 		styles: [
 			'test-styles'
-		]
+		],
+		rename: true
 	}
 });
 
