@@ -27,69 +27,111 @@
 	var document = window.document;
 	var head = document.getElementsByTagName('head')[0];
 
+	var readyDeferred = new Deferred();
+	var readyPromise = readyDeferred.promise;
+
 	var configuration = {};
 	var moduleConfig = configuration.modules = {};
 	var moduleConfigByPath = {};
 
-	// A dictionary containing forced name overrides for externally required modules.
-	var nameOverrides = {};
-	// A local cache of modules after they have been defined.
-	var resolved = {};
-	// A dictionary of Deferred instances corresponding to the required modules.
-	var waiting = {};
 	// Queue to handle asynchronous calls to `define`.
 	var defineStack = [];
+	// A local cache of modules after they have been defined.
+	var registry = {};
+	// A dictionary of Deferred instances corresponding to the required modules.
+	var waiting = {};
 
 	var re_capture_name = /([^\/]+)$/;
 	var re_strip_extension = /\.js$/i;
 
-	var listeners = {
-		onerror: function onerror() {
-			// TODO: Do we need to manually remove the event listeners here too?
-			this.parentNode.removeChild(this);
-		},
 
-		onload: function onload() {
-			this.removeEventListener('load', listeners.onload);
-			this.removeEventListener('error', listeners.onerror);
+	readyDeferred.promise = readyDeferred.promise.bind(window);
+	document.addEventListener('DOMContentLoaded', _listener$ready);
+	window.addEventListener('load', _listener$ready);
 
-			console.log(this);
-
-			//_finishDefinition(this);
-		}
-	};
+	if (document.readyState === 'complete') {
+		_listener$ready();
+	}
 
 
 	/**
-	 * Placeholder.
 	 *
-	 * @param {HTMLElement} [node]
-	 * @private
 	 */
-	function _finishDefinition(node) {
-		var config, definition, dependencies, factory, name, path, promises;
+	function _listener$error() {
+		// TODO: Do we need to manually remove the event listeners here too?
+		this.parentNode.removeChild(this);
+	}
 
-		definition = defineStack.pop();
 
-		name = definition.name;
-		dependencies = definition.dependencies;
-		factory = definition.factory;
+	/**
+	 *
+	 */
+	function _listener$load() {
+		var i, config, containsAnonymous, definition, node, path;
 
-		if (node) {
-			path = node.src;
-			config = moduleConfigByPath[path];
+		this.removeEventListener('load', _listener$load);
+		this.removeEventListener('error', _listener$error);
 
-			if (config && config.rename === true) {
-				// We can be sure this `name` property exists because we set it programatically in the .config() function.
-				name = config.name;
+		node = this;
+		path = node.src;
+		config = moduleConfigByPath[path];
+
+		if (config && config.rename === true) {
+			if (defineStack.length > 1) {
+				throw new Error('Attempt to apply a rename to a module with more than one define call.');
 			}
-			else if (name == null) {
-				name = re_capture_name.exec(path)[1].replace(re_strip_extension, '');
+
+			defineStack[0][0] = config.name;
+		}
+		else {
+			containsAnonymous = false;
+
+			for (i = 0; i < defineStack.length; i++) {
+				if (!defineStack[i][0]) {
+					containsAnonymous = true;
+					break;
+				}
+			}
+
+			if (containsAnonymous) {
+				if (defineStack.length > 1) {
+					throw new Error('Ambiguous anonymous module definition.');
+				}
+
+				defineStack[0][0] = re_capture_name.exec(path)[1].replace(re_strip_extension, '');
 			}
 		}
 
+		while (defineStack.length > 0) {
+			definition = defineStack.pop();
+			_define.apply(window, definition);
+		}
+	}
+
+
+	/**
+	 *
+	 */
+	function _listener$ready() {
+		document.removeEventListener('DOMContentLoaded', _listener$ready);
+		window.removeEventListener('load', _listener$ready);
+
+		readyDeferred.resolve();
+	}
+
+
+	/**
+	 *
+	 * @param {String} name
+	 * @param {Array} dependencies
+	 * @param {Function} factory
+	 * @private
+	 */
+	function _define(name, dependencies, factory) {
+		var promises;
+
 		if (name == null) {
-			throw new Error('Unnamed local modules not supported. Optimize this module to automatically add a name.');
+			throw new Error('Attempt to define anonymous module. A name could not be assumed.');
 		}
 
 		promises = _getPromises(dependencies);
@@ -104,10 +146,10 @@
 			waiting[name].resolve();
 
 			modules = dependencies.map(function(name) {
-				return resolved[name];
+				return registry[name];
 			});
 
-			resolved[name] = factory.apply(window, modules);
+			registry[name] = factory.apply(window, modules);
 		});
 	}
 
@@ -120,7 +162,9 @@
 	 * @private
 	 */
 	function _getPromises(dependencies) {
-		return dependencies.map(function(name) {
+		var promises;
+
+		promises = dependencies.map(function(name) {
 			var deferred;
 
 			if (waiting.hasOwnProperty(name)) {
@@ -132,11 +176,14 @@
 				return deferred.promise;
 			}
 		});
+
+		promises.push(readyPromise);
+
+		return promises;
 	}
 
 
 	/**
-	 *
 	 *
 	 * @param {String} url
 	 * @param {String} type
@@ -157,8 +204,8 @@
 			node.charset = 'utf-8';
 			node.async = true;
 
-			node.addEventListener('load', listeners.onload);
-			node.addEventListener('error', listeners.onerror);
+			node.addEventListener('load', _listener$load);
+			node.addEventListener('error', _listener$error);
 
 			node.src = url;
 		}
@@ -246,23 +293,13 @@
 	 * @param {Function} factory
 	 */
 	function define(name, dependencies, factory) {
-		console.log('here');
-
 		if (typeof name != 'string' && factory == null) {
 			factory = dependencies;
 			dependencies = name;
 			name = void(0);
 		}
 
-		defineStack.push({
-			name: name,
-			dependencies: dependencies,
-			factory: factory
-		});
-
-		// FIXME: How do we prevent this function from running immediately on an async loaded module?
-		// This issue blocks force renaming modules and dynamically naming modules based on file names (without preoptimization).
-		//_finishDefinition();
+		defineStack.push([name, dependencies, factory]);
 
 		_loadDependencies(dependencies);
 	}
@@ -309,6 +346,17 @@
 
 
 	/**
+	 *
+	 * @param callback
+	 */
+	function ready(callback) {
+		readyPromise.then(function() {
+			callback.call(window);
+		});
+	}
+
+
+	/**
 	 * Placeholder.
 	 *
 	 * @param {String|Array} dependencies
@@ -349,7 +397,7 @@
 					}
 				}
 
-				return resolved[name];
+				return registry[name];
 			});
 
 			callback.apply(window, modules);
@@ -361,10 +409,11 @@
 
 	define.amd = true;
 	require.config = config;
+	require.ready = ready;
 	require.debug = {
 		configuration: configuration,
 		defineStack: defineStack,
-		resolved: resolved,
+		registry: registry,
 		waiting: waiting,
 
 		load: _load,
