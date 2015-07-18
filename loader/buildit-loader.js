@@ -7,8 +7,6 @@
  * www.sberry.me
  * steven@sberry.me
  */
-
-
 (function(root, factory) {
 	var module;
 
@@ -27,130 +25,101 @@
 	var document = window.document;
 	var head = document.getElementsByTagName('head')[0];
 
-	var readyDeferred = new Deferred();
-	var readyPromise = readyDeferred.promise;
-
-	var configuration = {};
-	var moduleConfig = configuration.modules = {};
-	var moduleConfigByPath = {};
-
 	// Queue to handle asynchronous calls to `define`.
 	var defineStack = [];
 	// A local cache of modules after they have been defined.
 	var registry = {};
-	// A dictionary of Deferred instances corresponding to the required modules.
-	var waiting = {};
 
 	var re_capture_name = /([^\/]+)$/;
 	var re_strip_extension = /\.js$/i;
 
+	// Create a ready promise so that require calls need not be placed inside something like a $(document).ready(...)
+	// call. This promise is inserted into the array of dependency promises when Promises.all(...) is called for
+	// resolving modules. The IEFE is used here to prevent scope pollution.
+	//
+	// The deferred instance isn't garbage collected here as a result of how this code is constructed, but the footprint
+	// is insignificant.
+	var ready = (function() {
+		var deferred;
 
-	readyDeferred.promise = readyDeferred.promise.bind(window);
-	document.addEventListener('DOMContentLoaded', _listener$ready);
-	window.addEventListener('load', _listener$ready);
+		deferred = new Deferred();
 
-	if (document.readyState === 'complete') {
-		_listener$ready();
-	}
+		function listener() {
+			document.removeEventListener('DOMContentLoaded', listener);
+			window.removeEventListener('load', listener);
 
-
-	/**
-	 *
-	 */
-	function _listener$error() {
-		// TODO: Do we need to manually remove the event listeners here too?
-		this.parentNode.removeChild(this);
-	}
-
-
-	/**
-	 *
-	 */
-	function _listener$load() {
-		var i, config, containsAnonymous, definition, node, path;
-
-		this.removeEventListener('load', _listener$load);
-		this.removeEventListener('error', _listener$error);
-
-		node = this;
-		path = node.src;
-		config = moduleConfigByPath[path];
-
-		if (config && config.rename === true) {
-			if (defineStack.length > 1) {
-				throw new Error('Attempt to apply a rename to a module with more than one define call.');
-			}
-
-			defineStack[0][0] = config.name;
+			deferred.resolve();
 		}
-		else {
-			containsAnonymous = false;
 
-			for (i = 0; i < defineStack.length; i++) {
-				if (!defineStack[i][0]) {
-					containsAnonymous = true;
-					break;
-				}
+		document.addEventListener('DOMContentLoaded', listener);
+		window.addEventListener('load', listener);
+
+		if (document.readyState === 'complete') {
+			listener();
+		}
+
+		return deferred.promise.bind(window);
+	})();
+
+
+	/**
+	 *
+	 * @param name
+	 * @private
+	 */
+	function _executeDefines(name) {
+		var i, containsAnonymous, definition, module;
+
+		for (i = 0; i < defineStack.length; i++) {
+			if (!defineStack[i][0]) {
+				containsAnonymous = true;
+				break;
 			}
+		}
 
-			if (containsAnonymous) {
-				if (defineStack.length > 1) {
-					throw new Error('Ambiguous anonymous module definition.');
-				}
-
-				defineStack[0][0] = re_capture_name.exec(path)[1].replace(re_strip_extension, '');
+		if (containsAnonymous) {
+			if (defineStack.length > 1) {
+				throw new Error('Mismatched anonymous define() call');
+			}
+			else if (name == null) {
+				throw new Error('Mismatched anonymous define() call');
 			}
 		}
 
 		while (defineStack.length > 0) {
 			definition = defineStack.pop();
-			_define.apply(window, definition);
+
+			if (definition[0] == null) {
+				definition[0] = name;
+			}
+
+			name = definition[0];
+
+			if (registry.hasOwnProperty(name)) {
+				throw new Error('Attempt to redefine "' + name + '".');
+			}
+
+			module = _getModule(name);
+			module.init.apply(module, definition);
 		}
 	}
 
 
 	/**
 	 *
-	 */
-	function _listener$ready() {
-		document.removeEventListener('DOMContentLoaded', _listener$ready);
-		window.removeEventListener('load', _listener$ready);
-
-		readyDeferred.resolve();
-	}
-
-
-	/**
 	 *
-	 * @param {String} name
-	 * @param {Array} dependencies
-	 * @param {Function} factory
+	 * @param name
+	 * @returns {*}
 	 * @private
 	 */
-	function _define(name, dependencies, factory) {
-		var promises;
+	function _getModule(name) {
+		var module;
 
-		if (name == null) {
-			throw new Error('Attempt to define anonymous module. A name could not be assumed.');
+		if (module = registry[name]) {
+			return module;
 		}
 
-		promises = _getPromises(dependencies);
-
-		if (!waiting.hasOwnProperty(name)) {
-			waiting[name] = new Deferred();
-		}
-
-		Promise.all(promises).then(function() {
-			var modules;
-
-			waiting[name].resolve();
-
-			modules = dependencies.map(function(name) {
-				return registry[name];
-			});
-
-			registry[name] = factory.apply(window, modules);
-		});
+		return registry[name] = new Module(name);
 	}
 
 
@@ -165,95 +134,12 @@
 		var promises;
 
 		promises = dependencies.map(function(name) {
-			var deferred;
-
-			if (waiting.hasOwnProperty(name)) {
-				return waiting[name].promise;
-			}
-			else {
-				waiting[name] = deferred = new Deferred();
-
-				return deferred.promise;
-			}
+			return _getModule(name).ready;
 		});
 
-		promises.push(readyPromise);
+		promises.push(ready);
 
 		return promises;
-	}
-
-
-	/**
-	 *
-	 * @param {String} url
-	 * @param {String} type
-	 * @returns {require}
-	 */
-	function _load(url, type) {
-		var node;
-
-		if (type === 'text/javascript') {
-			url += '.js';
-
-			if (node = document.querySelector('script[src="' + url + '"]')) {
-				return node;
-			}
-
-			node = document.createElement('script');
-			node.type = type;
-			node.charset = 'utf-8';
-			node.async = true;
-
-			node.addEventListener('load', _listener$load);
-			node.addEventListener('error', _listener$error);
-
-			node.src = url;
-		}
-		else if (type === 'text/css') {
-			url += '.css';
-
-			if (node = document.querySelector('link[rel="stylesheet"][href="' + url + '"]')) {
-				return node;
-			}
-
-			node = document.createElement('link');
-			node.type = type;
-			node.rel = 'stylesheet';
-			node.charset = 'utf-8';
-			//node.media = 'none';
-
-			// TODO: Should we add listeners to stylesheet loading too?
-			// Technically they're supplemental requirements since CSS shouldn't be functionally linked to JS.
-			// May not be consistent in all cases.
-
-			node.href = url;
-		}
-		else {
-			throw new Error('Invalid content type.');
-		}
-
-		head.appendChild(node);
-
-		return node;
-	}
-
-
-	/**
-	 *
-	 * @param {Array} dependencies
-	 * @private
-	 */
-	function _loadDependencies(dependencies) {
-		var i, config, name, path;
-
-		for (i = 0; i < dependencies.length; i++) {
-			name = dependencies[i];
-			config = moduleConfig[name];
-
-			if (config && (path = config.path)) {
-				_load(path, 'text/javascript');
-			}
-		}
 	}
 
 
@@ -287,6 +173,161 @@
 
 
 	/**
+	 * Placeholder.
+	 *
+	 * @param name
+	 * @param dependencies
+	 * @param factory
+	 * @constructor
+	 */
+	function Module(name, dependencies, factory) {
+		var deferred, that = this;
+
+		this.init(name, dependencies, factory);
+
+		this._deferred = deferred = new Deferred();
+		this.ready = deferred.promise;
+
+		this.onerror = function() {
+			Module.prototype.onerror.call(that, this, that);
+		};
+
+		this.onload = function() {
+			Module.prototype.onload.call(that, this, that);
+		};
+	}
+
+	Module.prototype = {
+		loaded: false,
+		path: null,
+		rename: false,
+		resolved: null,
+		styles: [],
+
+		/**
+		 *
+		 * @param conf
+		 * @returns {Module} Chainable.
+		 */
+		config: function Module$config(conf) {
+			var path, styles;
+
+			// If the value corresponding to the `name` key is a string, then it's a "simple" configuration entry and
+			// is just the value of the path.
+			if (typeof conf === 'string') {
+				this.path = value;
+			}
+			else {
+				if (path = conf.path) {
+					this.path = path;
+				}
+
+				if (styles = conf.styles) {
+					this.styles = styles.slice();
+				}
+
+				this.rename = !!conf.rename;
+			}
+
+			return this;
+		},
+
+		/**
+		 *
+		 * @param name
+		 * @param dependencies
+		 * @param factory
+		 * @returns {Module} Chainable.
+		 */
+		init: function Module$init(name, dependencies, factory) {
+			this.name = name;
+			this.dependencies = dependencies;
+			this.factory = factory;
+
+			return this;
+		},
+
+		/**
+		 *
+		 * @returns {Module} Chainable.
+		 */
+		load: function Module$load() {
+			var i, node, path, styles;
+
+			if (!this.loaded) {
+				path = this.path + '.js';
+				node = document.querySelector('link[rel="stylesheet"][href="' + path + '"]');
+				styles = this.styles;
+
+				if (!node) {
+					node = document.createElement('script');
+					node.type = 'text/javascript';
+					node.charset = 'utf-8';
+					node.async = true;
+
+					node.addEventListener('load', this.onload);
+					node.addEventListener('error', this.onerror);
+
+					node.src = path;
+
+					head.appendChild(node);
+				}
+
+				// FIXME: This is sensitive to redraw computation. It may not be an issue if dependencies are loaded onReady rather than in response to user events later.
+				// Potential solution to use deferred queue with a .then() callback to set media type to "all" from "none" (i.e. force a "single" redraw).
+				for (i = 0; i < styles.length; i++) {
+					path = styles[i] + '.css';
+
+					if (node = document.querySelector('link[rel="stylesheet"][href="' + path + '"]')) {
+						continue;
+					}
+
+					node = document.createElement('link');
+					node.type = 'text/css';
+					node.rel = 'stylesheet';
+					node.charset = 'utf-8';
+					//node.media = 'none';
+
+					node.href = path;
+
+					head.appendChild(node);
+				}
+			}
+
+			return this;
+		},
+
+		/**
+		 *
+		 * @param node
+		 * @param module
+		 */
+		onerror: function Module$onerror(node, module) {
+			node.parentNode.removeChild(node);
+
+			throw new Error('Error loading external dependency "' + node.src + '".');
+		},
+
+		/**
+		 *
+		 * @param node
+		 * @param module
+		 */
+		onload: function Module$onload(node, module) {
+			var name, path;
+
+			node.removeEventListener('load', module.onload);
+			node.removeEventListener('error', module.onerror);
+
+			path = node.src;
+			name = (module.rename) ? module.name : re_capture_name.exec(path)[1].replace(re_strip_extension, '');
+
+			_executeDefines(name);
+		}
+	};
+
+
+	/**
 	 *
 	 * @param {String} [name]
 	 * @param {Array} dependencies
@@ -300,8 +341,6 @@
 		}
 
 		defineStack.push([name, dependencies, factory]);
-
-		_loadDependencies(dependencies);
 	}
 
 
@@ -312,47 +351,18 @@
 	 * @returns {require}
 	 */
 	function config(options) {
-		var name, path, rename, styles, value;
+		var name, conf, module;
 
 		for (name in options) {
 			if (!options.hasOwnProperty(name)) {
 				break;
 			}
 
-			value = options[name];
+			conf = options[name];
+			module = _getModule(name);
 
-			// If the value corresponding to the `name` key is a string, then it's a "simple" configuration entry and
-			// is just the value of the path.
-			if (typeof value === 'string') {
-				path = value;
-				styles = []
-			}
-			else {
-				// If the path is null, then the specified module is understood to be "internal." An internal module is
-				// one that is loaded via a markup script tag rather than one "required" in dynamically via the loader.
-				path = value.path || null;
-				styles = (value.styles) ? value.styles.slice() : [];
-				rename = value.rename || false;
-			}
-
-			moduleConfig[name] = moduleConfigByPath[path + '.js'] = {
-				name: name,
-				path: path,
-				rename: rename,
-				styles: styles
-			};
+			module.config(conf);
 		}
-	}
-
-
-	/**
-	 *
-	 * @param callback
-	 */
-	function ready(callback) {
-		readyPromise.then(function() {
-			callback.call(window);
-		});
 	}
 
 
@@ -363,21 +373,24 @@
 	 * @param {Function} callback
 	 */
 	function require(dependencies, callback) {
-		var name, promises;
+		var module, name, promises;
 
 		if (typeof dependencies === 'string' && callback == null) {
 			name = dependencies;
+			module = registry[name];
 
-			if (!modules.hasOwnProperty(name)) {
-				throw new Error('Module `' + name + '` not yet defined.');
+			if (module && module.resolved) {
+				return module.resolved;
 			}
 
-			return modules[name];
+			throw new Error('Module `' + name + '` not yet defined.');
 		}
 
 		if (typeof callback !== 'function') {
 			throw new Error('Invalid callback supplied.');
 		}
+
+		_executeDefines();
 
 		promises = _getPromises(dependencies);
 
@@ -385,39 +398,25 @@
 			var modules;
 
 			modules = dependencies.map(function(name) {
-				var i, config, styles;
-
-				config = moduleConfig[name];
-
-				if (config && (styles = config.styles)) {
-					for (i = 0; i < styles.length; i++) {
-						// FIXME: This is sensitive to redraw computation. It may not be an issue if dependencies are loaded onReady rather than in response to user events later.
-						// Potential solution to use deferred queue with a .then() callback to set media type to "all" from "none" (i.e. force a "single" redraw).
-						_load(styles[i], 'text/css');
-					}
-				}
-
-				return registry[name];
+				return registry[name].resolved;
 			});
 
 			callback.apply(window, modules);
 		});
 
-		_loadDependencies(dependencies);
+		// Kick off the recursive load process here. If a module is defined and has a path, then included that <script>.
+		// Otherwise just chill out and wait for a define call. This is so we can call defines after requires.
+		// This will have to be listened for in the .config() prototype method (i.e. if `required` and all of a sudden there's a path, it needs to load immediately.
 	}
 
 
 	define.amd = true;
 	require.config = config;
-	require.ready = ready;
 	require.debug = {
-		configuration: configuration,
 		defineStack: defineStack,
 		registry: registry,
-		waiting: waiting,
 
-		load: _load,
-		redraw: _redraw
+		ready: ready
 	};
 
 
