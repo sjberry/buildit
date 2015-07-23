@@ -10,7 +10,7 @@ string patterns) and configuration options. The pattern format conforms to the s
 ```javascript
 var buildit = require('buildit');
 
-var out = buildit('src/**/*.js', {
+var out = buildit({
   baseUrl: '.',
   name: 'mybundle',
   define: {
@@ -50,8 +50,8 @@ var out = buildit.run();
 console.log(out);
 ```
 
-The `Buildit` constructor accepts the same arguments as the `buildit` function (but just exposes the additional `.add()`
-and `.run()` methods).
+The `Buildit` constructor accepts the same arguments as the `buildit` function (but just exposes the additional
+`.run()` method).
 
 ### Options
 **baseUrl** &ndash; The folder to use as the current working directory. The specified path is relative to the directory
@@ -125,6 +125,38 @@ Individual modules can then be accessed as follows:
 require(['mybundle'], function(mybundle) {
   mybundle.mod1; // Should be defined.
   mybundle.mod2; // Should be defined.
+});
+```
+
+The `exports` option can also be a string to enable a singular module export. For example, the following configuration:
+
+```javascript
+var buildit = require('buildit');
+
+var out = buildit({
+  baseUrl: '.',
+  name: 'mybundle',
+  exports: 'src/mymod1'
+});
+
+console.log(out);
+```
+
+Would result in the bundle:
+
+```javascript
+define('mybundle', [ ... ], function( ... ) {
+   // Internal bundling code
+   
+   return require('src/mymod1');
+});
+```
+
+The module would then be accessed as follows:
+
+```javascript
+require(['mybundle'], function(mybundle) {
+  mybundle; // Should be defined and equivalent to the exports of "src/mymod1".
 });
 ```
 

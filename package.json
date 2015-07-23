@@ -20,5 +20,5 @@
     "glob": "^4.0.6",
     "mu-unique": "0.0.2"
   },
-  "main": "lib/buildit"
+  "main": "src/buildit"
 }
