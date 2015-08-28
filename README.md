@@ -20,7 +20,10 @@ var out = buildit({
   exports: {
     mymod1: 'src/mymod1',
     mymod2: 'src/mymod2'
-  }
+  },
+  extensions: [
+    'src/myextension'
+  ]
 });
 
 console.log(out);
@@ -42,7 +45,10 @@ var buildit = new Buildit({
   exports: {
     mymod1: 'src/mymod1',
     mymod2: 'src/mymod2'
-  }
+  },
+  extensions: [
+    'src/myextension'
+  ]
 });
 
 var out = buildit.run();
@@ -160,9 +166,22 @@ require(['mybundle'], function(mybundle) {
 });
 ```
 
-Note that the **define** and **exports** options are not mutually exlusive and there can be overlap between exported
-modules and AMD-defined modules. While this can be redundant and doesn't necessarily make sense, the flexibility is
-maintained.
+**extensions** &ndash; Internal modules can be used to extend their dependencies. The `extensions` option is an array
+containing paths to the files that will be executed internally as part of the bundle definition. Similar to the RequireJS
+optimizer, the ".js" extension should be excluded from the module path as it is added automatically. Only extensions
+corresponding to files found by the supplied pattern(s) will be sucessfully executed. From the primary usage example above,
+the `extensions` option would manifest in the bundle as:
+
+```javascript
+define(name, [ ... ], function( ... ) {
+  // Internal bundling code
+
+  require('src/myextension');
+});
+```
+
+Note that the **define**, **exports**, and **extensions** options are not mutually exlusive. While this can be redundant
+and doesn't necessarily make sense, the flexibility is available.
 
 
 ### Command-line Support

@@ -40,11 +40,16 @@ function Buildit(opts) {
 	if (opts.exports) {
 		this.exports = opts.exports;
 	}
+
+	if (opts.extensions) {
+		this.extensions = opts.extensions;
+	}
 }
 
 Buildit.prototype = {
 	define: {},
 	exports: {},
+	extensions: [],
 
 	bundle: function Buildit$bundle() {
 		// TODO: Make this compatible with gulp streams.
@@ -64,6 +69,14 @@ Buildit.prototype = {
 		patterns = [];
 
 		each(this.exports, function(filepath, name) {
+			var fullpath;
+
+			fullpath = path.join(that.cwd, filepath + '.js');
+
+			patterns.push(fullpath);
+		});
+
+		each(this.extensions, function(filepath) {
 			var fullpath;
 
 			fullpath = path.join(that.cwd, filepath + '.js');
@@ -100,6 +113,12 @@ Buildit.prototype = {
 			}
 		});
 
+		each(this.extensions, function(filepath) {
+			if (!locals.hasOwnProperty(filepath)) {
+				throw new Error('Module "' + filepath + '" not found');
+			}
+		});
+
 		out = '';
 		out += print.header(this.name, externals);
 		out += print.library(externals);
@@ -111,6 +130,7 @@ Buildit.prototype = {
 		});
 
 		out += print.exports(this.exports);
+		out += print.extensions(this.extensions);
 		out += print.footer();
 
 		return out;
