@@ -129,8 +129,11 @@ Buildit.prototype = {
 			out += print.file(name, file.source) + (define[name] ? print.define(define[name], name) : '');
 		});
 
+		each(this.extensions, function(filepath) {
+			out += print.extension(filepath);
+		});
+
 		out += print.exports(this.exports);
-		out += print.extensions(this.extensions);
 		out += print.footer();
 
 		return out;
